@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile server/auth.py server/resume_registry.py server/bot_controller.py server/main.py modules/feed_scraper.py modules/company_discovery.py config/companies.py)"
+    ]
+  }
+}

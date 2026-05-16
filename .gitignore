@@ -1,0 +1,19 @@
+__pycache__
+.vscode
+.idea
+
+all excels
+all resumes
+logs
+
+old
+
+secrets.py
+config/personals.py
+.venv
+apikeys.py
+
+# Local environment overrides (never commit)
+.env
+.env.local
+server/auth_state.json
