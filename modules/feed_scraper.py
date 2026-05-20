@@ -234,6 +234,17 @@ def scan_company(driver, entry: dict, roles: list[str], dry_run: bool = False) -
 
 
 def write_hits(hits: list[dict]) -> None:
+    # Dual-write: CSV (existing behaviour, never breaks) + Mongo via the repo.
+    # The repo handles its own CSV append, so we don't double-write.
+    try:
+        import sys as _sys, os as _os
+        _sys.path.insert(0, _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "..", "server")))
+        from store import upsert_posts  # type: ignore
+        upsert_posts(hits)
+        return
+    except Exception as e:
+        print(f"[feed_scraper] store.upsert_posts unavailable ({e}); falling back to direct CSV write")
+    # Fallback path — only runs if the repo import fails for some reason.
     _ensure_csv()
     with open(OUTPUT_CSV, "a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=CSV_FIELDS)

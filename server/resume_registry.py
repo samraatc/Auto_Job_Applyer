@@ -19,6 +19,11 @@ from typing import Optional
 from fastapi import HTTPException, UploadFile
 
 from config_manager import write_config
+try:
+    from store import list_resumes_doc as _store_list, write_resumes_doc as _store_write  # type: ignore
+except ImportError:
+    _store_list = None
+    _store_write = None
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RESUMES_DIR = os.path.join(PROJECT_ROOT, "all resumes")
@@ -27,6 +32,14 @@ MAX_BYTES = 5 * 1024 * 1024
 
 
 def _load() -> dict:
+    # Prefer Mongo (via store) when available; falls back to the JSON file.
+    if _store_list is not None:
+        try:
+            doc = _store_list()
+            if doc.get("resumes"):
+                return doc
+        except Exception:
+            pass
     if not os.path.exists(REGISTRY_FILE):
         return {"resumes": [], "default_id": None}
     with open(REGISTRY_FILE, "r", encoding="utf-8") as f:
@@ -35,8 +48,17 @@ def _load() -> dict:
 
 def _save(data: dict) -> None:
     os.makedirs(RESUMES_DIR, exist_ok=True)
-    with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    if _store_write is not None:
+        # store.write_resumes_doc handles both JSON file write and Mongo mirror.
+        try:
+            _store_write(data)
+        except Exception:
+            # Fall through to direct JSON write below
+            with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+    else:
+        with open(REGISTRY_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
     _sync_questions_default(data)
 
 

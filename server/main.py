@@ -36,6 +36,16 @@ from auth import (
     clear_session_cookie, require_admin, change_password,
 )
 from resume_registry import list_resumes, upload_resume, set_default, delete_resume
+from db import healthcheck as mongo_healthcheck
+from store import (
+    list_posts as store_list_posts,
+    list_applied as store_list_applied,
+    applied_status_map as store_applied_status_map,
+    list_companies as store_list_companies,
+    replace_companies as store_replace_companies,
+    read_search_rules as store_read_search_rules,
+    write_search_rules as store_write_search_rules,
+)
 
 app = FastAPI(title="AI Applier Admin")
 
@@ -115,7 +125,7 @@ class SearchRules(BaseModel):
 
 @app.get("/api/search-rules", response_model=SearchRules)
 def get_search_rules(user: str = Depends(require_admin)):
-    s = read_config("search.py")
+    s = store_read_search_rules()
     # search.py stores {term: path}; translate back to {term: resume_id} for the UI.
     registry = list_resumes()
     path_to_id = {r["path"]: r["id"] for r in registry["resumes"]}
@@ -142,7 +152,7 @@ def post_search_rules(rules: SearchRules, user: str = Depends(require_admin)):
     payload["per_term_resume"] = {
         term: id_to_path[rid] for term, rid in payload["per_term_resume"].items() if rid and rid in id_to_path
     }
-    write_config("search.py", payload)
+    store_write_search_rules(payload)
     return {"ok": True}
 
 
@@ -190,13 +200,12 @@ class CompaniesPayload(BaseModel):
 
 @app.get("/api/companies")
 def get_companies(user: str = Depends(require_admin)):
-    c = read_config("companies.py")
-    return {"target_companies": c.get("target_companies", [])}
+    return {"target_companies": store_list_companies()}
 
 
 @app.post("/api/companies")
 def post_companies(payload: CompaniesPayload, user: str = Depends(require_admin)):
-    write_config("companies.py", {"target_companies": [c.dict() for c in payload.target_companies]})
+    store_replace_companies([c.dict() for c in payload.target_companies])
     return {"ok": True}
 
 
@@ -239,40 +248,49 @@ async def feed_logs(user: str = Depends(require_admin)):
 
 @app.get("/api/applied-jobs")
 def applied_jobs(limit: int = 500, status: Optional[str] = None, user: str = Depends(require_admin)):
-    """Read the bot's applied / failed CSVs. status=applied|failed|all (default all)."""
-    base = os.path.join(os.path.dirname(__file__), "..", "all excels")
-    files = []
-    if status in (None, "all", "applied"):
-        files.append(("applied", os.path.join(base, "all_applied_applications_history.csv")))
-    if status in (None, "all", "failed"):
-        files.append(("failed", os.path.join(base, "all_failed_applications_history.csv")))
-    rows = []
-    for tag, path in files:
-        if not os.path.exists(path):
-            continue
-        with open(path, "r", encoding="utf-8") as f:
-            for r in csv.DictReader(f):
-                r["_status"] = tag
-                rows.append(r)
-    rows.sort(key=lambda r: r.get("Date Applied", ""), reverse=True)
-    return {"jobs": rows[:limit]}
+    """Read applied / failed jobs. status=applied|failed|all (default all). Mongo first, CSV fallback."""
+    return {"jobs": store_list_applied(limit=limit, status=status)}
 
 
 @app.get("/api/hiring-posts")
 def hiring_posts(role: Optional[str] = None, company: Optional[str] = None, limit: int = 200, user: str = Depends(require_admin)):
-    csv_path = os.path.join(os.path.dirname(__file__), "..", "all excels", "feed_jobs.csv")
-    if not os.path.exists(csv_path):
-        return {"posts": []}
-    with open(csv_path, "r", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-    if role:
-        rl = role.lower()
-        rows = [r for r in rows if rl in (r.get("Matched Role", "") + " " + r.get("Title", "")).lower()]
-    if company:
-        cl = company.lower()
-        rows = [r for r in rows if cl in r.get("Company", "").lower()]
-    rows.sort(key=lambda r: r.get("Classified At", ""), reverse=True)
-    return {"posts": rows[:limit]}
+    return {"posts": store_list_posts(role=role, company=company, limit=limit)}
+
+
+@app.get("/api/linkedin-posts")
+def linkedin_posts(limit: int = 200, user: str = Depends(require_admin)):
+    """
+    Hiring posts auto-filtered to ones matching the user's current search_terms,
+    annotated with whether the bot has already applied to / failed on the
+    underlying Job ID (extracted from Apply URL or Post URL when present).
+    This is what the LinkedIn Posts tab in the dashboard reads.
+    """
+    s = store_read_search_rules()
+    terms = s.get("search_terms", []) or []
+    posts = store_list_posts(match_terms=terms, limit=limit) if terms else store_list_posts(limit=limit)
+
+    # Try to extract Job IDs from Apply URLs that look like LinkedIn /jobs/view/{id}
+    # so we can mark which posts have already been applied to.
+    import re as _re
+    JOB_ID_RE = _re.compile(r"/jobs/view/(\d+)")
+    candidate_ids = []
+    for p in posts:
+        for url in (p.get("Apply URL", ""), p.get("Post URL", "")):
+            m = JOB_ID_RE.search(url or "")
+            if m:
+                candidate_ids.append(m.group(1))
+                p["_job_id"] = m.group(1)
+                break
+    status_map = store_applied_status_map(candidate_ids)
+    for p in posts:
+        jid = p.get("_job_id")
+        p["_applied_status"] = status_map.get(jid) if jid else None
+    return {"posts": posts, "matched_terms": terms}
+
+
+@app.get("/api/mongo/health")
+def mongo_health(user: str = Depends(require_admin)):
+    return mongo_healthcheck()
 
 
 # ----------------------- Bot controls -----------------------

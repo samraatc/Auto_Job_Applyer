@@ -102,9 +102,14 @@ def discover(roles: Optional[list[str]] = None, location: Optional[str] = None, 
 
 
 def merge_into_config(new_entries: list[dict]) -> list[dict]:
-    """Merge new entries into config/companies.py:target_companies, dedupe by linkedin_url."""
-    from config.companies import target_companies as existing
-    from server.config_manager import write_config  # type: ignore
+    """Merge new entries into companies storage (Mongo via store; falls back to config/companies.py)."""
+    try:
+        from server.store import list_companies, replace_companies  # type: ignore
+        existing = list_companies()
+    except Exception:
+        from config.companies import target_companies as existing  # type: ignore
+        replace_companies = None  # type: ignore
+        list_companies = None     # type: ignore
 
     seen_urls = {e.get("linkedin_url") for e in existing}
     merged = list(existing)
@@ -114,7 +119,11 @@ def merge_into_config(new_entries: list[dict]) -> list[dict]:
         merged.append(e)
         seen_urls.add(e.get("linkedin_url"))
 
-    write_config("companies.py", {"target_companies": merged})
+    if 'replace_companies' in locals() and replace_companies is not None:
+        replace_companies(merged)
+    else:
+        from server.config_manager import write_config  # type: ignore
+        write_config("companies.py", {"target_companies": merged})
     return merged
 
 
