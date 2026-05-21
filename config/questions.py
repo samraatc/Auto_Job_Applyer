@@ -30,10 +30,10 @@ years_of_experience = "2"          # A number in quotes Eg: "0","1","2","3","4",
 require_visa = "Yes"               # "Yes" or "No"
 
 # What is the link to your portfolio website, leave it empty as "", if you want to leave this question unanswered
-website = "https://www.linkedin.com/in/omvr/"                        # "www.example.bio" or "" and so on....
+website = "https://bishnu0031.netlify.app/"                        # "www.example.bio" or "" and so on....
 
 # Please provide the link to your LinkedIn profile.
-linkedIn = "https://www.linkedin.com/in/omvr/"       # "https://www.linkedin.com/in/example" or "" and so on...
+linkedIn = "https://www.linkedin.com/in/bishnu-chaudhary-a60166407/"       # "https://www.linkedin.com/in/example" or "" and so on...
 
 # What is the status of your citizenship? # If left empty as "", tool will not answer the question. However, note that some companies make it compulsory to be answered
 # Valid options are: "U.S. Citizen/Permanent Resident", "Non-citizen allowed to work for any employer", "Non-citizen allowed to work for current employer", "Non-citizen seeking work authorization", "Canadian Citizen/Permanent Resident" or "Other"
@@ -84,12 +84,14 @@ then it will divide by 30 or 7 and answer respectively. Examples:
 '''
 
 # Your LinkedIn headline in quotes Eg: "Software Engineer @ Google, Masters in Computer Science", "Recent Grad Student @ MIT, Computer Science"
-linkedin_headline = "Software Engineer @GrowBeyond Tech | Zoho Consultant | AI & Workflow Automation" # "Headline" or "" to leave this question unanswered
+linkedin_headline = "MERN Stack Developer | DevOps | CI/CD | Python | AI Enthusiast" # "Headline" or "" to leave this question unanswered
 
 # Your summary in quotes, use \n to add line breaks if using single quotes "Summary".You can skip \n if using triple quotes """Summary"""
 linkedin_summary = """
 
+
 I am a Software Engineer working across automation, AI systems, and full-stack development, with growing experience in product thinking, user-centric problem solving, and driving projects from idea to execution. Over the past few years, I’ve helped teams improve operations by building scalable systems using Zoho One, AI integrations, and workflow automation.
+
 
 """
 
@@ -102,12 +104,16 @@ cover_letter = """
 
 
 
+
+
 """
 ##> ------ Dheeraj Deshwal : dheeraj9811 Email:dheeraj20194@iiitd.ac.in/dheerajdeshwal9811@gmail.com - Feature ------
 
 # Your user_information_all letter in quotes, use \n to add line breaks if using single quotes "user_information_all".You can skip \n if using triple quotes """user_information_all""" (This question makes sense though)
 # We use this to pass to AI to generate answer from information , Assuing Information contians eg: resume  all the information like name, experience, skills, Country, any illness etc.
 user_information_all = """
+
+
 
 
 """
@@ -117,7 +123,7 @@ Note: If left empty as "", the tool will not answer the question. However, note 
 '''
 
 # Name of your most recent employer
-recent_employer = "Growbeyond Tech Pvt. Ltd." # "", "Lala Company", "Google", "Snowflake", "Databricks"
+recent_employer = "Attica Gold Pvt. Ltd." # "", "Lala Company", "Google", "Snowflake", "Databricks"
 
 # Example question: "On a scale of 1-10 how much experience do you have building web or mobile applications? 1 being very little or only in school, 10 being that you have built and launched applications to real users"
 confidence_level = "4"             # Any number between "1" to "10" including 1 and 10, put it in quotes ""

@@ -174,6 +174,39 @@ Actual sidebar: `Dashboard | Search Rules | Resumes | Companies | Hiring Posts |
 | Dotenv | Both `server/main.py` and `config/secrets.py` now call `dotenv.load_dotenv()` against the project-root `.env` on import (best-effort: silently no-ops if `python-dotenv` isn't installed). `python-dotenv` added to `requirements-ui.txt`. Documented in MIGRATION.md §2. | `server/main.py`, `config/secrets.py`, `requirements-ui.txt`, `MIGRATION.md` |
 | Auth reset | Blanked `server/auth_state.json` so the next server boot re-seeds username/hash/JWT-secret from the loaded `.env`. (Was pinned to `admin` from a prior boot before the env vars were set.) | `server/auth_state.json` |
 
+---
+
+## Round 2 — features (MongoDB + LinkedIn Posts + neumorphism login)
+
+| ID | Change | Files |
+|----|--------|-------|
+| Mongo layer | New `server/db.py` (pymongo client + indexes + healthcheck) and `server/store.py` (repos for posts / applied / companies / resumes / search rules; Mongo-first reads with file fallback; dual-writes). | `server/db.py`, `server/store.py` |
+| Mongo migration | `python -m server.migrate_to_mongo` idempotently imports `feed_jobs.csv`, the applied/failed CSVs, `registry.json`, `companies.py`, and `search.py` into Mongo. `--dry-run` previews. | `server/migrate_to_mongo.py` |
+| Writers wired | `modules/feed_scraper.py:write_hits` and `runAiBot.py:submitted_jobs` / `failed_job` dual-write to Mongo. `server/resume_registry.py` and `modules/company_discovery.py:merge_into_config` read/write through the store. | `modules/feed_scraper.py`, `runAiBot.py`, `server/resume_registry.py`, `modules/company_discovery.py` |
+| API wired | `/api/hiring-posts`, `/api/applied-jobs`, `/api/companies`, `/api/search-rules` now read through `server/store`. New `GET /api/linkedin-posts` returns posts filtered to the current `search_terms` with an `_applied_status` field per row. New `GET /api/mongo/health` for the dashboard badge. | `server/main.py` |
+| Sidebar tab | "LinkedIn Posts" added between Hiring Posts and Apply Log. | `frontend/src/components/Sidebar.jsx`, `frontend/src/App.jsx` |
+| LinkedIn Posts UI | New `LinkedInPosts.jsx` — filtered table, clickable rows opening the post in a new tab, Applied badge, Mongo health badge, Start scan / Dry run buttons. | `frontend/src/components/LinkedInPosts.jsx` |
+| Hiring Posts UI | Rows clickable; new Applied column showing the applied/failed badge if the bot has already touched the job. | `frontend/src/components/HiringPosts.jsx` |
+| Apply Log UI | Status pills (Applied/Failed/Pending), rows clickable opening the LinkedIn job in a new tab. | `frontend/src/components/ApplyLog.jsx` |
+| Neumorphism login | Rewrote `Login.jsx` with scoped neumorphism CSS — soft outset card, inset inputs, click-flip button, light/dark via `prefers-color-scheme`. | `frontend/src/components/Login.jsx` |
+| Env / deps | `pymongo>=4`, `dnspython` added to `requirements-ui.txt`. `MONGODB_URI` / `MONGODB_DB` added to `.env.example`. MIGRATION.md got a new §12 covering Atlas setup, collections, and the health endpoint. | `requirements-ui.txt`, `.env.example`, `MIGRATION.md` |
+
+### Design contract
+
+- **Mongo is optional.** Without `MONGODB_URI`, behaviour is byte-identical
+  to round 1: every read/write goes to CSV/JSON. Existing users see no
+  change until they opt in.
+- **Files stay authoritative on Mongo outages.** Every writer still writes
+  to its CSV/JSON. Reads fall back to the same files when Mongo is
+  unreachable. The standalone bot keeps applying.
+- **No `import pymongo` from the bot path.** `runAiBot.py` only touches
+  Mongo via `server/store.record_applied`, which is imported lazily and
+  inside `try/except`. Missing `pymongo` or missing `server/` directory is
+  a silent no-op.
+- **`/api/linkedin-posts` extracts Job IDs from the post's Apply URL** (the
+  `linkedin.com/jobs/view/{id}` pattern) so the Applied badge works without
+  any extra wiring from the scraper side.
+
 **Important:** the OpenAI key and LinkedIn password that were previously
 committed in `config/secrets.py` are still recoverable from git history.
 Scrubbing them out requires `git filter-repo` (or BFG) and a force-push,

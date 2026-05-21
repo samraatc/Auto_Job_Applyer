@@ -8,6 +8,7 @@ import SearchRules from './components/SearchRules'
 import Resumes from './components/Resumes'
 import Companies from './components/Companies'
 import HiringPosts from './components/HiringPosts'
+import LinkedInPosts from './components/LinkedInPosts'
 import ApplyLog from './components/ApplyLog'
 import Settings from './components/Settings'
 import { apiJson, api } from './api'
@@ -18,6 +19,7 @@ const TAB_TITLES = {
   resumes: 'Resumes',
   companies: 'Companies',
   posts: 'Hiring Posts',
+  linkedin: 'LinkedIn Posts',
   applylog: 'Apply Log',
   config: 'Raw Config',
   logs: 'Live Logs',
@@ -85,6 +87,7 @@ function App() {
           {activeTab === 'resumes' && <Resumes />}
           {activeTab === 'companies' && <Companies />}
           {activeTab === 'posts' && <HiringPosts />}
+          {activeTab === 'linkedin' && <LinkedInPosts />}
           {activeTab === 'applylog' && <ApplyLog />}
           {activeTab === 'config' && <ConfigEditor />}
           {activeTab === 'logs' && <Terminal botStatus={botStatus} />}

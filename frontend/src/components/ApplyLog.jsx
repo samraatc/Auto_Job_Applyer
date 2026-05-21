@@ -45,16 +45,31 @@ function ApplyLog() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((j, i) => (
-                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td style={{ padding: 8, color: j._status === 'failed' ? '#e57373' : 'var(--success, #66bb6a)' }}>{j._status}</td>
-                  <td>{j['Job ID']}</td>
-                  <td>{j['Title']}</td>
-                  <td>{j['Company']}</td>
-                  <td>{j['Date Applied']}</td>
-                  <td>{j['Job Link'] ? <a href={j['Job Link']} target="_blank" rel="noreferrer">open</a> : '—'}</td>
-                </tr>
-              ))}
+              {filtered.map((j, i) => {
+                const link = j['Job Link'] || j.job_link || ''
+                const status = j._status || j.status || 'applied'
+                const bg = status === 'failed' ? '#c62828' : status === 'applied' ? '#2e7d32' : '#6d4c41'
+                const open = () => link && window.open(link, '_blank', 'noopener,noreferrer')
+                return (
+                  <tr key={i}
+                      onClick={open}
+                      style={{ borderTop: '1px solid var(--border)', cursor: link ? 'pointer' : 'default' }}
+                      onMouseEnter={e => { if (link) e.currentTarget.style.background = 'rgba(127,127,127,0.06)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                    <td style={{ padding: 8 }}>
+                      <span style={{
+                        background: bg, color: 'white', padding: '3px 9px', borderRadius: 12,
+                        fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5,
+                      }}>{status}</span>
+                    </td>
+                    <td>{j['Job ID'] || j.job_id}</td>
+                    <td>{j['Title'] || j.title}</td>
+                    <td>{j['Company'] || j.company}</td>
+                    <td>{j['Date Applied'] || j.date_applied}</td>
+                    <td onClick={e => e.stopPropagation()}>{link ? <a href={link} target="_blank" rel="noreferrer">open ↗</a> : '—'}</td>
+                  </tr>
+                )
+              })}
               {filtered.length === 0 && <tr><td colSpan={6} style={{ padding: 12, color: 'var(--text-secondary)' }}>No rows.</td></tr>}
             </tbody>
           </table>

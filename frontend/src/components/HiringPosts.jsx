@@ -68,20 +68,32 @@ function HiringPosts() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--text-secondary)' }}>
-              <th style={{ padding: 8 }}>Company</th><th>Matched role</th><th>Excerpt</th><th>Confidence</th><th>Link</th>
+              <th style={{ padding: 8 }}>Company</th><th>Matched role</th><th>Excerpt</th><th>Confidence</th><th>Applied?</th><th>Link</th>
             </tr>
           </thead>
           <tbody>
-            {posts.map((p, i) => (
-              <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: 8 }}>{p['Company']}</td>
-                <td>{p['Matched Role'] || p['Title']}</td>
-                <td style={{ maxWidth: 480 }}>{p['Post Excerpt']}</td>
-                <td>{Number(p['Confidence'] || 0).toFixed(2)}</td>
-                <td>{p['Post URL'] ? <a href={p['Post URL']} target="_blank" rel="noreferrer">open</a> : '—'}</td>
-              </tr>
-            ))}
-            {posts.length === 0 && <tr><td colSpan={5} style={{ padding: 12, color: 'var(--text-secondary)' }}>No posts yet — run a scan.</td></tr>}
+            {posts.map((p, i) => {
+              const url = p['Post URL'] || p['Apply URL'] || ''
+              const open = () => url && window.open(url, '_blank', 'noopener,noreferrer')
+              const st = p._applied_status
+              return (
+                <tr key={i}
+                    onClick={open}
+                    style={{ borderTop: '1px solid var(--border)', cursor: url ? 'pointer' : 'default' }}
+                    onMouseEnter={e => { if (url) e.currentTarget.style.background = 'rgba(127,127,127,0.06)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                  <td style={{ padding: 8 }}>{p['Company']}</td>
+                  <td>{p['Matched Role'] || p['Title']}</td>
+                  <td style={{ maxWidth: 480 }}>{p['Post Excerpt']}</td>
+                  <td>{Number(p['Confidence'] || 0).toFixed(2)}</td>
+                  <td>{st
+                    ? <span style={{ background: st === 'applied' ? '#2e7d32' : '#c62828', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, textTransform: 'uppercase' }}>{st}</span>
+                    : <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>—</span>}</td>
+                  <td onClick={e => e.stopPropagation()}>{url ? <a href={url} target="_blank" rel="noreferrer">open ↗</a> : '—'}</td>
+                </tr>
+              )
+            })}
+            {posts.length === 0 && <tr><td colSpan={6} style={{ padding: 12, color: 'var(--text-secondary)' }}>No posts yet — run a scan.</td></tr>}
           </tbody>
         </table>
       </div>

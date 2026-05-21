@@ -16,7 +16,8 @@ pip install -r requirements-ui.txt
 ```
 
 New packages: `bcrypt`, `python-jose[cryptography]`, `python-multipart`,
-`pydantic>=2`, `python-dotenv`.
+`pydantic>=2`, `python-dotenv`, `pymongo`, `dnspython` (required by pymongo
+for Atlas SRV URIs).
 
 ## 2. Set environment variables
 
@@ -166,7 +167,7 @@ GET    /api/bot/logs                       SSE
 
 ## 9. UI tabs
 
-`Dashboard | Search Rules | Resumes | Companies | Hiring Posts | Apply Log | Raw Config | Live Logs | Settings`
+`Dashboard | Search Rules | Resumes | Companies | Hiring Posts | LinkedIn Posts | Apply Log | Raw Config | Live Logs | Settings`
 
 - **Dashboard** — start/stop the main applier bot, see status.
 - **Search Rules** — typed form (terms, location, job type, experience,
@@ -176,7 +177,12 @@ GET    /api/bot/logs                       SSE
 - **Companies** — CRUD list + a one-click **Run discovery** button that
   opens Chrome, searches each role, and appends new companies.
 - **Hiring Posts** — start/stop feed scan (with dry-run), filter results by
-  role/company, click through to LinkedIn.
+  role/company, click any row to open the post on LinkedIn. Now also shows
+  an *Applied?* badge when the bot has already submitted (or failed) on the
+  Job ID embedded in the post's Apply URL.
+- **LinkedIn Posts** — same data as Hiring Posts but auto-filtered to posts
+  matching your current `search_terms`. Click a row to open the post on
+  LinkedIn. The Applied badge appears here too.
 - **Apply Log** — read-only view of `all_applied_applications_history.csv` and
   `all_failed_applications_history.csv` with a text-search filter.
 - **Raw Config** — legacy key/value editor for any setting that doesn't have
@@ -209,7 +215,55 @@ on plain `http://127.0.0.1:8000`. When serving the dashboard behind HTTPS
 environment and restart — the cookie flips to `secure=True,
 samesite=strict`.
 
-## 12. Known limitations
+## 12. MongoDB (optional but recommended)
+
+The app now ships a Mongo persistence layer with full file-system fallback,
+so:
+- **Mongo unset?** Identical behaviour to before — CSV/JSON files own the data.
+- **Mongo set + reachable?** Hiring posts, applied jobs, companies,
+  resumes registry, and search rules are stored in Mongo *and* mirrored to
+  the existing files. Reads prefer Mongo. The standalone bot (`runAiBot.py`)
+  best-effort mirrors each applied/failed row into Mongo too.
+- **Mongo set but Atlas unreachable?** The app logs once and silently falls
+  back to file reads/writes. The bot keeps running.
+
+### Set up Atlas
+
+1. Create a free M0 cluster on https://cloud.mongodb.com.
+2. Add a database user (Database Access → Add New User).
+3. Allow your IP under Network Access (or `0.0.0.0/0` for testing only).
+4. Click *Connect → Drivers → Python* and copy the SRV string.
+5. Paste it into `.env`:
+   ```
+   MONGODB_URI=mongodb+srv://USER:PASS@CLUSTER.mongodb.net/?retryWrites=true&w=majority&appName=auto_job_applier
+   MONGODB_DB=auto_job_applier
+   ```
+6. Migrate the data you already have:
+   ```powershell
+   python -m server.migrate_to_mongo            # full one-shot migration
+   python -m server.migrate_to_mongo --dry-run  # preview only
+   ```
+   Idempotent — safe to re-run.
+7. Restart `uvicorn`. The Dashboard's LinkedIn Posts tab shows a green
+   *MongoDB: connected* badge when it's working.
+
+### Collections created
+
+| Collection         | Unique key       | Source CSV/JSON                                       |
+|--------------------|------------------|-------------------------------------------------------|
+| `posts`            | `post_url`       | `all excels/feed_jobs.csv`                            |
+| `applied_jobs`     | `job_id` (+ `status`) | `all_applied_applications_history.csv`, `all_failed_applications_history.csv` |
+| `companies`        | `linkedin_url`   | `config/companies.py`                                 |
+| `resumes`          | `id`             | `all resumes/registry.json`                           |
+| `resumes_meta`     | `_id="default"`  | `default_id` from `registry.json`                     |
+| `search_rules`     | `_id="current"`  | `config/search.py` (typed fields only)                |
+
+### Health check
+
+`GET /api/mongo/health` returns `{enabled, ok, db|reason}`. The LinkedIn
+Posts tab polls this and shows the connection state inline.
+
+## 13. Known limitations
 
 - LinkedIn DOM changes will break the feed scraper selectors
   (`div.feed-shared-update-v2`, `div.update-components-update-v2`). Update

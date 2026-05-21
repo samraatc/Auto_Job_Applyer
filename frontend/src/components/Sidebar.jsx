@@ -1,13 +1,14 @@
 const TABS = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'search',    label: 'Search Rules' },
-  { id: 'resumes',   label: 'Resumes' },
-  { id: 'companies', label: 'Companies' },
-  { id: 'posts',     label: 'Hiring Posts' },
-  { id: 'applylog',  label: 'Apply Log' },
-  { id: 'config',    label: 'Raw Config' },
-  { id: 'logs',      label: 'Live Logs' },
-  { id: 'settings',  label: 'Settings' },
+  { id: 'dashboard',   label: 'Dashboard' },
+  { id: 'search',      label: 'Search Rules' },
+  { id: 'resumes',     label: 'Resumes' },
+  { id: 'companies',   label: 'Companies' },
+  { id: 'posts',       label: 'Hiring Posts' },
+  { id: 'linkedin',    label: 'LinkedIn Posts' },
+  { id: 'applylog',    label: 'Apply Log' },
+  { id: 'config',      label: 'Raw Config' },
+  { id: 'logs',        label: 'Live Logs' },
+  { id: 'settings',    label: 'Settings' },
 ]
 
 function Sidebar({ activeTab, setActiveTab, onLogout, username }) {
