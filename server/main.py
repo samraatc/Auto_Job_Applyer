@@ -19,11 +19,13 @@ except ImportError:
 
 from fastapi import FastAPI, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
+from middleware.cors_middleware import configure_cors
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Literal, Optional
 import csv
+
+from api.router import api_router
 
 from config_manager import get_all_configs, read_config, update_all_configs, write_config
 from bot_controller import (
@@ -33,8 +35,36 @@ from bot_controller import (
 )
 from auth import (
     LoginPayload, verify_credentials, create_token, set_session_cookie,
-    clear_session_cookie, require_admin, change_password,
+    clear_session_cookie, change_password, validate_token
 )
+from auth.auth_handler import get_current_user_id
+
+def require_auth_user(request: Request):
+    token = request.cookies.get("aja_session")
+    if not token:
+        token = request.headers.get("Authorization")
+        if token and token.startswith("Bearer "):
+            token = token.split(" ")[1]
+    
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Try MongoDB JWT first
+    try:
+        from jose import jwt
+        from core.config import settings as cfg
+        payload = jwt.decode(token, cfg.secret_key, algorithms=[cfg.algorithm])
+        if payload.get("sub"):
+            return payload.get("sub")
+    except Exception:
+        pass
+
+    # Try Legacy
+    if validate_token(token):
+        return "admin"
+
+    raise HTTPException(status_code=401, detail="Invalid token")
+
 from resume_registry import list_resumes, upload_resume, set_default, delete_resume
 from db import healthcheck as mongo_healthcheck
 from store import (
@@ -54,13 +84,11 @@ from store import (
 
 app = FastAPI(title="AI Applier Admin")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+configure_cors(app)
+
+app.include_router(api_router, prefix="/api/v1")
+# Also expose at /api so the frontend can call /api/auth/*, /api/settings/*, /api/logs/*
+app.include_router(api_router, prefix="/api")
 
 
 # ----------------------- Auth -----------------------
@@ -81,7 +109,7 @@ def logout(response: Response):
 
 
 @app.get("/api/auth/me")
-def me(user: str = Depends(require_admin)):
+def me(user: str = Depends(require_auth_user)):
     return {"username": user}
 
 
@@ -91,7 +119,7 @@ class PasswordChange(BaseModel):
 
 
 @app.post("/api/auth/change-password")
-def change_pw(payload: PasswordChange, user: str = Depends(require_admin)):
+def change_pw(payload: PasswordChange, user: str = Depends(require_auth_user)):
     change_password(payload.current_password, payload.new_password)
     return {"ok": True}
 
@@ -99,12 +127,12 @@ def change_pw(payload: PasswordChange, user: str = Depends(require_admin)):
 # ----------------------- Config (legacy editor) -----------------------
 
 @app.get("/api/config")
-def read_configuration(user: str = Depends(require_admin)):
+def read_configuration(user: str = Depends(require_auth_user)):
     return get_all_configs()
 
 
 @app.post("/api/config")
-async def save_configuration(request: Request, user: str = Depends(require_admin)):
+async def save_configuration(request: Request, user: str = Depends(require_auth_user)):
     payload = await request.json()
     try:
         update_all_configs(payload)
@@ -129,7 +157,7 @@ class SearchRules(BaseModel):
 
 
 @app.get("/api/search-rules", response_model=SearchRules)
-def get_search_rules(user: str = Depends(require_admin)):
+def get_search_rules(user: str = Depends(require_auth_user)):
     s = store_read_search_rules()
     # search.py stores {term: path}; translate back to {term: resume_id} for the UI.
     registry = list_resumes()
@@ -150,7 +178,7 @@ def get_search_rules(user: str = Depends(require_admin)):
 
 
 @app.post("/api/search-rules")
-def post_search_rules(rules: SearchRules, user: str = Depends(require_admin)):
+def post_search_rules(rules: SearchRules, user: str = Depends(require_auth_user)):
     payload = rules.dict()
     registry = list_resumes()
     id_to_path = {r["id"]: r["path"] for r in registry["resumes"]}
@@ -172,7 +200,7 @@ def post_search_rules(rules: SearchRules, user: str = Depends(require_admin)):
 # ----------------------- Resumes -----------------------
 
 @app.get("/api/resumes")
-def get_resumes(user: str = Depends(require_admin)):
+def get_resumes(user: str = Depends(require_auth_user)):
     return list_resumes()
 
 
@@ -182,7 +210,7 @@ async def post_resume(
     label: str = Form(""),
     tags: str = Form(""),
     make_default: bool = Form(False),
-    user: str = Depends(require_admin),
+    user: str = Depends(require_auth_user),
 ):
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     entry = await upload_resume(file, label, tag_list, make_default)
@@ -190,12 +218,12 @@ async def post_resume(
 
 
 @app.patch("/api/resumes/{resume_id}/default")
-def patch_default(resume_id: str, user: str = Depends(require_admin)):
+def patch_default(resume_id: str, user: str = Depends(require_auth_user)):
     return set_default(resume_id)
 
 
 @app.delete("/api/resumes/{resume_id}")
-def del_resume(resume_id: str, user: str = Depends(require_admin)):
+def del_resume(resume_id: str, user: str = Depends(require_auth_user)):
     return delete_resume(resume_id)
 
 
@@ -212,35 +240,35 @@ class CompaniesPayload(BaseModel):
 
 
 @app.get("/api/companies")
-def get_companies(user: str = Depends(require_admin)):
+def get_companies(user: str = Depends(require_auth_user)):
     return {"target_companies": store_list_companies()}
 
 
 @app.post("/api/companies")
-def post_companies(payload: CompaniesPayload, user: str = Depends(require_admin)):
+def post_companies(payload: CompaniesPayload, user: str = Depends(require_auth_user)):
     store_replace_companies([c.dict() for c in payload.target_companies])
     return {"ok": True}
 
 
 @app.post("/api/companies/discover")
-def trigger_discovery(user: str = Depends(require_admin)):
+def trigger_discovery(user: str = Depends(require_auth_user)):
     return start_discovery()
 
 
 @app.get("/api/companies/discover/status")
-def discovery_state(user: str = Depends(require_admin)):
+def discovery_state(user: str = Depends(require_auth_user)):
     return discovery_status()
 
 
 @app.get("/api/companies/discover/logs")
-async def discovery_logs(user: str = Depends(require_admin)):
+async def discovery_logs(user: str = Depends(require_auth_user)):
     return StreamingResponse(discover_log_generator(), media_type="text/event-stream")
 
 
 # ----------------------- Feed scan / hiring posts -----------------------
 
 @app.post("/api/feed-scan/start")
-def feed_start(dry_run: bool = False, user: str = Depends(require_admin)):
+def feed_start(dry_run: bool = False, user: str = Depends(require_auth_user)):
     return start_feed_scan(dry_run=dry_run)
 
 
@@ -250,7 +278,7 @@ class KeywordScanBody(BaseModel):
 
 
 @app.post("/api/feed-scan/start-keyword")
-def feed_start_keyword(body: KeywordScanBody, user: str = Depends(require_admin)):
+def feed_start_keyword(body: KeywordScanBody, user: str = Depends(require_auth_user)):
     """
     Kick off a LinkedIn content-search scrape for the given free-text keywords
     (e.g. ["hiring", "we're hiring devops engineer"]). Each keyword is a
@@ -265,28 +293,28 @@ def feed_start_keyword(body: KeywordScanBody, user: str = Depends(require_admin)
 
 
 @app.post("/api/feed-scan/stop")
-def feed_stop(user: str = Depends(require_admin)):
+def feed_stop(user: str = Depends(require_auth_user)):
     return stop_feed_scan()
 
 
 @app.get("/api/feed-scan/status")
-def feed_state(user: str = Depends(require_admin)):
+def feed_state(user: str = Depends(require_auth_user)):
     return feed_status()
 
 
 @app.get("/api/feed-scan/logs")
-async def feed_logs(user: str = Depends(require_admin)):
+async def feed_logs(user: str = Depends(require_auth_user)):
     return StreamingResponse(feed_log_generator(), media_type="text/event-stream")
 
 
 @app.get("/api/applied-jobs")
-def applied_jobs(limit: int = 500, status: Optional[str] = None, user: str = Depends(require_admin)):
+def applied_jobs(limit: int = 500, status: Optional[str] = None, user: str = Depends(require_auth_user)):
     """Read applied / failed jobs. status=applied|failed|all (default all). Mongo first, CSV fallback."""
     return {"jobs": store_list_applied(limit=limit, status=status)}
 
 
 @app.get("/api/applied-jobs/submitted")
-def applied_jobs_submitted(limit: int = 500, user: str = Depends(require_admin)):
+def applied_jobs_submitted(limit: int = 500, user: str = Depends(require_auth_user)):
     """
     Subset of applied jobs that were ACTUALLY submitted — i.e. the row has a
     real Date Applied timestamp (Easy Apply success), or the user marked it
@@ -305,7 +333,7 @@ def applied_jobs_submitted(limit: int = 500, user: str = Depends(require_admin))
 
 
 @app.post("/api/applied-jobs/clear")
-def clear_applied_jobs(keep_backup: bool = True, user: str = Depends(require_admin)):
+def clear_applied_jobs(keep_backup: bool = True, user: str = Depends(require_auth_user)):
     """
     Nuke the apply history. Backs up both CSVs to <name>.bak.<utc>.csv first
     (skip with keep_backup=false), then truncates them, drops Mongo
@@ -315,7 +343,7 @@ def clear_applied_jobs(keep_backup: bool = True, user: str = Depends(require_adm
 
 
 @app.get("/api/manual-apply")
-def manual_apply(limit: int = 500, user: str = Depends(require_admin)):
+def manual_apply(limit: int = 500, user: str = Depends(require_auth_user)):
     """
     Jobs the bot collected an external apply link for but couldn't Easy-Apply.
     You finish these by hand — the Manual Apply tab in the dashboard renders
@@ -329,7 +357,7 @@ class ManualDoneBody(BaseModel):
 
 
 @app.post("/api/manual-apply/{job_id}/done")
-def manual_apply_done(job_id: str, body: ManualDoneBody, user: str = Depends(require_admin)):
+def manual_apply_done(job_id: str, body: ManualDoneBody, user: str = Depends(require_auth_user)):
     """
     Mark (or un-mark) a Manual Apply row as "done by hand". This:
       - records the timestamp in the manual-apply sidecar,
@@ -341,7 +369,7 @@ def manual_apply_done(job_id: str, body: ManualDoneBody, user: str = Depends(req
 
 
 @app.delete("/api/manual-apply/{job_id}")
-def manual_apply_delete(job_id: str, user: str = Depends(require_admin)):
+def manual_apply_delete(job_id: str, user: str = Depends(require_auth_user)):
     """
     Hide a job from the Manual Apply list (delete button on a row). The
     underlying applied_jobs row is left intact — only the Manual Apply view
@@ -355,19 +383,19 @@ class BulkDeleteBody(BaseModel):
 
 
 @app.post("/api/manual-apply/bulk-delete")
-def manual_apply_bulk_delete(body: BulkDeleteBody, user: str = Depends(require_admin)):
+def manual_apply_bulk_delete(body: BulkDeleteBody, user: str = Depends(require_auth_user)):
     """Hide a batch of Job IDs from Manual Apply in one call. The Apply Log
     keeps every underlying row — Manual Apply just filters them out."""
     return store_bulk_dismiss_manual_apply(body.job_ids)
 
 
 @app.get("/api/hiring-posts")
-def hiring_posts(role: Optional[str] = None, company: Optional[str] = None, limit: int = 200, user: str = Depends(require_admin)):
+def hiring_posts(role: Optional[str] = None, company: Optional[str] = None, limit: int = 200, user: str = Depends(require_auth_user)):
     return {"posts": store_list_posts(role=role, company=company, limit=limit)}
 
 
 @app.get("/api/linkedin-posts")
-def linkedin_posts(limit: int = 200, all: bool = False, user: str = Depends(require_admin)):
+def linkedin_posts(limit: int = 200, all: bool = False, user: str = Depends(require_auth_user)):
     """
     Hiring posts auto-filtered to ones matching the user's current search_terms,
     annotated with whether the bot has already applied to / failed on the
@@ -405,19 +433,19 @@ def linkedin_posts(limit: int = 200, all: bool = False, user: str = Depends(requ
 
 
 @app.get("/api/mongo/health")
-def mongo_health(user: str = Depends(require_admin)):
+def mongo_health(user: str = Depends(require_auth_user)):
     return mongo_healthcheck()
 
 
 # ----------------------- Bot controls -----------------------
 
 @app.post("/api/bot/start")
-def start_bot_endpoint(user: str = Depends(require_admin)):
+def start_bot_endpoint(user: str = Depends(require_auth_user)):
     return start_bot()
 
 
 @app.post("/api/bot/stop")
-def stop_bot_endpoint(user: str = Depends(require_admin)):
+def stop_bot_endpoint(user: str = Depends(require_auth_user)):
     return stop_bot()
 
 
@@ -428,7 +456,7 @@ def status_endpoint():
 
 
 @app.get("/api/bot/logs")
-async def logs_endpoint(user: str = Depends(require_admin)):
+async def logs_endpoint(user: str = Depends(require_auth_user)):
     return StreamingResponse(log_generator(), media_type="text/event-stream")
 
 

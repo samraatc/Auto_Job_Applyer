@@ -41,6 +41,54 @@ from config.search import *
 from config.secrets import use_AI, username, password, ai_provider
 from config.settings import *
 
+# Multi-User SaaS Override
+if os.environ.get("AJA_USER_ID"):
+    try:
+        import sys
+        # Add server path to import config_loader
+        server_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "server"))
+        if server_path not in sys.path:
+            sys.path.insert(0, server_path)
+        from bot.config_loader import BotConfigLoader
+        
+        user_id = os.environ.get("AJA_USER_ID")
+        print(f"Running Bot in Multi-User SaaS Mode for User ID: {user_id}")
+        
+        loader = BotConfigLoader(user_id)
+        settings = loader.get_settings()
+        rules = loader.get_search_rules()
+        meta = loader.get_resumes_meta()
+        
+        # Override secrets
+        username = settings.get("linkedin_user", username)
+        password = settings.get("linkedin_pass", password)
+        use_AI = bool(settings.get("openai_api_key") or settings.get("gemini_api_key") or settings.get("anthropic_api_key") or settings.get("deepseek_api_key"))
+        ai_provider = settings.get("ai_model", ai_provider).split("-")[0] if settings.get("ai_model") else ai_provider
+        
+        # Override search rules
+        search_terms = rules.get("search_terms", search_terms)
+        search_location = rules.get("search_location", search_location)
+        job_type = rules.get("job_type", job_type)
+        experience_level = rules.get("experience_level", experience_level)
+        on_site = rules.get("on_site", on_site)
+        date_posted = rules.get("date_posted", date_posted)
+        easy_apply_only = rules.get("easy_apply_only", easy_apply_only)
+        apply_mode = rules.get("apply_mode", apply_mode)
+        per_term_resume = rules.get("per_term_resume", per_term_resume)
+        
+        # Override resumes
+        default_resume_path = meta.get("default_resume_path", default_resume_path)
+        
+        # We can also add env vars for the API keys so the AI clients pick them up
+        if settings.get("openai_api_key"): os.environ["OPENAI_API_KEY"] = settings["openai_api_key"]
+        if settings.get("gemini_api_key"): os.environ["GEMINI_API_KEY"] = settings["gemini_api_key"]
+        if settings.get("anthropic_api_key"): os.environ["ANTHROPIC_API_KEY"] = settings["anthropic_api_key"]
+        if settings.get("deepseek_api_key"): os.environ["DEEPSEEK_API_KEY"] = settings["deepseek_api_key"]
+        
+    except Exception as e:
+        print(f"Error loading user settings from DB: {e}")
+
+
 from modules.open_chrome import *
 from modules.helpers import *
 from modules.clickers_and_finders import *

@@ -1,133 +1,179 @@
 import { useState, useEffect } from 'react'
-import Sidebar from './components/Sidebar'
-import Dashboard from './components/Dashboard'
-import ConfigEditor from './components/ConfigEditor'
-import Terminal from './components/Terminal'
-import Login from './components/Login'
-import SearchRules from './components/SearchRules'
-import Resumes from './components/Resumes'
-import Companies from './components/Companies'
-import HiringPosts from './components/HiringPosts'
-import LinkedInPosts from './components/LinkedInPosts'
-import ManualApply from './components/ManualApply'
-import ApplyLog from './components/ApplyLog'
-import AppliedLogs from './components/AppliedLogs'
-import Settings from './components/Settings'
-import { apiJson, api } from './api'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { ToastProvider } from './context/ToastContext'
+import Sidebar from './components/layout/Sidebar'
+import Dashboard from './components/dashboard/Dashboard'
+import Overview from './components/dashboard/Overview'
+import ConfigEditor from './components/settings/ConfigEditor'
+import Terminal from './components/dashboard/Terminal'
+import Login from './components/auth/Login'
+import SearchRules from './components/settings/SearchRules'
+import Resumes from './components/resumes/Resumes'
+import Companies from './components/jobs/Companies'
+import HiringPosts from './components/jobs/HiringPosts'
+import LinkedInPosts from './components/linkedin/LinkedInPosts'
+import ManualApply from './components/linkedin/ManualApply'
+import ApplyLog from './components/jobs/ApplyLog'
+import AppliedLogs from './components/jobs/AppliedLogs'
+import Settings from './components/settings/Settings'
+import LandingPage from './components/public/LandingPage'
+import OnboardingWizard from './components/onboarding/OnboardingWizard'
 
-const TAB_TITLES = {
-  dashboard: 'Dashboard',
-  search: 'Search Rules',
-  resumes: 'Resumes',
-  companies: 'Companies',
-  posts: 'Hiring Posts',
-  linkedin: 'LinkedIn Posts',
-  manual: 'Manual Apply',
-  applylog: 'Apply Logs',
-  appliedlog: 'Applied Logs',
-  config: 'Raw Config',
-  logs: 'Live Logs',
-  settings: 'Settings',
+// ── Public Route Wrapper ────────────────────────────────────────
+function PublicRoute({ children }) {
+  const { user, authChecked } = useAuth()
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center text-foreground">
+        <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4" />
+        <span>Loading...</span>
+      </div>
+    )
+  }
+  // Redirect logged-in users to the dashboard instead of the landing page/login
+  if (user) return <Navigate to="/app" replace />
+  return children
 }
 
-function App() {
-  const [activeTab, setActiveTab] = useState('dashboard')
+// ── Protected Route Wrapper ───────────────────────────────────────
+function ProtectedRoute({ children }) {
+  const { user, authChecked } = useAuth()
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center text-foreground">
+        <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4" />
+        <span>Loading...</span>
+      </div>
+    )
+  }
+  if (!user) return <Navigate to="/login" replace />
+  return children
+}
+
+// ── App Shell (Dashboard Layout) ──────────────────────────────────
+function AppShell({ children }) {
+  const { user, logout } = useAuth()
   const [botStatus, setBotStatus] = useState('stopped')
-  const [user, setUser] = useState(null)
-  const [authChecked, setAuthChecked] = useState(false)
-  // Mobile sidebar drawer state. Toggled by the burger button in the header,
-  // closed automatically when the user picks a tab or clicks the scrim.
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // Sync drawer state to the body so CSS can slide the sidebar in/out.
   useEffect(() => {
     document.body.classList.toggle('sidebar-open', sidebarOpen)
     return () => document.body.classList.remove('sidebar-open')
   }, [sidebarOpen])
 
-  // Close drawer on tab change — mobile users expect navigation to dismiss it.
-  const navigate = (id) => {
-    setActiveTab(id)
-    if (sidebarOpen) setSidebarOpen(false)
-  }
-
   const checkStatus = () => {
     fetch('/api/bot/status', { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => setBotStatus(data.status === 'running' ? 'running' : 'stopped'))
+      .then(r => r.json())
+      .then(d => setBotStatus(d.status === 'running' ? 'running' : 'stopped'))
       .catch(() => {})
   }
 
-  const checkAuth = () => {
-    apiJson('/api/auth/me')
-      .then(d => setUser(d.username))
-      .catch(() => setUser(null))
-      .finally(() => setAuthChecked(true))
-  }
-
   useEffect(() => {
-    checkAuth()
-    const onUnauth = () => setUser(null)
-    window.addEventListener('aja:unauthenticated', onUnauth)
-    return () => window.removeEventListener('aja:unauthenticated', onUnauth)
+    checkStatus()
+    const id = setInterval(checkStatus, 5000)
+    return () => clearInterval(id)
   }, [])
 
-  useEffect(() => {
-    if (!user) return
-    checkStatus()
-    const interval = setInterval(checkStatus, 5000)
-    return () => clearInterval(interval)
-  }, [user])
-
-  const logout = async () => {
-    await api('/api/auth/logout', { method: 'POST' })
-    setUser(null)
-  }
-
-  if (!authChecked) return <div style={{ padding: 24 }}>Loading…</div>
-  if (!user) return <Login onLogin={u => { setUser(u); checkStatus() }} />
+  const isRunning = botStatus === 'running'
 
   return (
-    <div className="app-container">
-      <Sidebar activeTab={activeTab} setActiveTab={navigate} onLogout={logout} username={user} />
+    <div className="flex h-screen bg-background overflow-hidden w-full">
+      <Sidebar
+        isOpen={sidebarOpen}
+        onLogout={logout}
+        closeSidebar={() => setSidebarOpen(false)}
+      />
 
-      {/* Scrim — visible only when the mobile drawer is open. Tapping it
-          dismisses the sidebar without picking a tab. */}
-      <div className="sidebar-scrim" onClick={() => setSidebarOpen(false)} />
+      {/* Mobile scrim */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
 
-      <main className="main-content">
-        <header className="header">
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+      <main className="main-content flex-1 flex flex-col h-screen overflow-hidden">
+        {/* Header */}
+        <header className="h-16 border-b border-border bg-card/50 backdrop-blur flex items-center justify-between px-6 shrink-0 sticky top-0 z-10">
+          <div className="flex items-center gap-4">
             <button
-              className="sidebar-toggle"
-              aria-label="Toggle navigation"
-              onClick={() => setSidebarOpen(v => !v)}>
+              className="lg:hidden text-foreground p-2 -ml-2 rounded-md hover:bg-secondary"
+              onClick={() => setSidebarOpen(v => !v)}
+            >
               ☰
             </button>
-            <h2>{TAB_TITLES[activeTab] || ''}</h2>
+            <h2 className="font-semibold text-lg">Dashboard</h2>
           </div>
-          <div className={`status-badge ${botStatus}`}>
-            <span className={`terminal-dot ${botStatus === 'running' ? 'green' : 'red'}`}></span>
-            Bot {botStatus === 'running' ? 'Running' : 'Stopped'}
+
+          <div className="flex items-center gap-4">
+            <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider ${isRunning ? 'bg-success/10 text-success border border-success/20' : 'bg-muted text-muted-foreground'}`}>
+              <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-success animate-pulse' : 'bg-muted-foreground'}`} />
+              Bot {isRunning ? 'Running' : 'Stopped'}
+            </span>
           </div>
         </header>
 
-        <div className="content-area">
-          {activeTab === 'dashboard' && <Dashboard botStatus={botStatus} checkStatus={checkStatus} setActiveTab={navigate} />}
-          {activeTab === 'search' && <SearchRules />}
-          {activeTab === 'resumes' && <Resumes />}
-          {activeTab === 'companies' && <Companies />}
-          {activeTab === 'posts' && <HiringPosts />}
-          {activeTab === 'linkedin' && <LinkedInPosts />}
-          {activeTab === 'manual' && <ManualApply />}
-          {activeTab === 'applylog' && <ApplyLog />}
-          {activeTab === 'appliedlog' && <AppliedLogs />}
-          {activeTab === 'config' && <ConfigEditor />}
-          {activeTab === 'logs' && <Terminal botStatus={botStatus} />}
-          {activeTab === 'settings' && <Settings username={user} />}
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+          {children}
         </div>
       </main>
     </div>
+  )
+}
+
+// ── Router ────────────────────────────────────────────────────────
+function App() {
+  return (
+    <ToastProvider>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={
+            <PublicRoute>
+              <LandingPage />
+            </PublicRoute>
+          } />
+          <Route path="/login" element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          } />
+          
+          {/* Onboarding */}
+          <Route path="/onboarding" element={
+            <ProtectedRoute>
+              <OnboardingWizard />
+            </ProtectedRoute>
+          } />
+
+          {/* Dashboard Application Routes */}
+          <Route path="/app" element={
+            <ProtectedRoute>
+              <AppShell>
+                <Overview />
+              </AppShell>
+            </ProtectedRoute>
+          } />
+
+          {/* Fallback to old dashboard while migrating */}
+          <Route path="/app/bot" element={<ProtectedRoute><AppShell><Dashboard /></AppShell></ProtectedRoute>} />
+          <Route path="/app/search" element={<ProtectedRoute><AppShell><SearchRules /></AppShell></ProtectedRoute>} />
+          <Route path="/app/resumes" element={<ProtectedRoute><AppShell><Resumes /></AppShell></ProtectedRoute>} />
+          <Route path="/app/companies" element={<ProtectedRoute><AppShell><Companies /></AppShell></ProtectedRoute>} />
+          <Route path="/app/posts" element={<ProtectedRoute><AppShell><HiringPosts /></AppShell></ProtectedRoute>} />
+          <Route path="/app/linkedin" element={<ProtectedRoute><AppShell><LinkedInPosts /></AppShell></ProtectedRoute>} />
+          <Route path="/app/manual" element={<ProtectedRoute><AppShell><ManualApply /></AppShell></ProtectedRoute>} />
+          <Route path="/app/applylog" element={<ProtectedRoute><AppShell><ApplyLog /></AppShell></ProtectedRoute>} />
+          <Route path="/app/appliedlog" element={<ProtectedRoute><AppShell><AppliedLogs /></AppShell></ProtectedRoute>} />
+          <Route path="/app/config" element={<ProtectedRoute><AppShell><ConfigEditor /></AppShell></ProtectedRoute>} />
+          <Route path="/app/logs" element={<ProtectedRoute><AppShell><Terminal /></AppShell></ProtectedRoute>} />
+          <Route path="/app/settings" element={<ProtectedRoute><AppShell><Settings /></AppShell></ProtectedRoute>} />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+    </ToastProvider>
   )
 }
 

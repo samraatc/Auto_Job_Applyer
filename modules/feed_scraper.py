@@ -32,6 +32,42 @@ from config.search import search_terms
 from config.secrets import use_AI, ai_provider
 from config.settings import file_name as applied_csv_path  # not strictly needed, kept for parity
 
+# Multi-User SaaS Override
+import os
+if os.environ.get("AJA_USER_ID"):
+    try:
+        import sys
+        server_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "server"))
+        if server_path not in sys.path:
+            sys.path.insert(0, server_path)
+        from bot.config_loader import BotConfigLoader
+        
+        user_id = os.environ.get("AJA_USER_ID")
+        print(f"[feed_scraper] Running in Multi-User SaaS Mode for User ID: {user_id}")
+        
+        loader = BotConfigLoader(user_id)
+        settings = loader.get_settings()
+        rules = loader.get_search_rules()
+        
+        # Override secrets
+        use_AI = bool(settings.get("openai_api_key") or settings.get("gemini_api_key") or settings.get("anthropic_api_key") or settings.get("deepseek_api_key"))
+        ai_provider = settings.get("ai_model", ai_provider).split("-")[0] if settings.get("ai_model") else ai_provider
+        
+        # Override search rules
+        search_terms = rules.get("search_terms", search_terms)
+        
+        # Override companies
+        target_companies = loader.get_target_companies() or target_companies
+        
+        # Set API keys for AI clients
+        if settings.get("openai_api_key"): os.environ["OPENAI_API_KEY"] = settings["openai_api_key"]
+        if settings.get("gemini_api_key"): os.environ["GEMINI_API_KEY"] = settings["gemini_api_key"]
+        if settings.get("anthropic_api_key"): os.environ["ANTHROPIC_API_KEY"] = settings["anthropic_api_key"]
+        if settings.get("deepseek_api_key"): os.environ["DEEPSEEK_API_KEY"] = settings["deepseek_api_key"]
+    except Exception as e:
+        print(f"[feed_scraper] Error loading user settings from DB: {e}")
+
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT_CSV = os.path.join(PROJECT_ROOT, "all excels", "feed_jobs.csv")
 SCROLL_PAUSE = 1.6
