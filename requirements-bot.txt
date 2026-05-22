@@ -1,0 +1,16 @@
+# Runtime deps for runAiBot.py + modules/* (the Selenium bot side).
+# Install with:  pip install -r requirements-bot.txt
+#
+# The admin dashboard's separate deps live in requirements-ui.txt.
+# Most users want both:  pip install -r requirements-bot.txt -r requirements-ui.txt
+
+# Browser automation
+selenium>=4
+undetected-chromedriver
+
+# Native dialogs the bot uses for pause-before-submit / failed-question prompts
+pyautogui
+
+# LLM SDKs (only the one matching your AI_PROVIDER is actually loaded at runtime)
+openai>=1
+google-generativeai

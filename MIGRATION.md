@@ -9,15 +9,27 @@ your configured search terms.
 The existing Selenium bot (`runAiBot.py`) still runs standalone — none of the
 prior config files were renamed.
 
-## 1. Install new dependencies
+## 1. Install dependencies
+
+There are two requirements files now:
 
 ```powershell
+# Bot side — selenium, undetected-chromedriver, pyautogui, openai, etc.
+pip install -r requirements-bot.txt
+
+# Dashboard side — fastapi, uvicorn, bcrypt, jose, pymongo, dotenv, etc.
 pip install -r requirements-ui.txt
 ```
 
-New packages: `bcrypt`, `python-jose[cryptography]`, `python-multipart`,
-`pydantic>=2`, `python-dotenv`, `pymongo`, `dnspython` (required by pymongo
-for Atlas SRV URIs).
+Most users want both. Order doesn't matter. Re-run after pulling new code.
+
+`requirements-ui.txt` packages: `bcrypt`, `python-jose[cryptography]`,
+`python-multipart`, `pydantic>=2`, `python-dotenv`, `pymongo`, `dnspython`
+(required by pymongo for Atlas SRV URIs).
+
+`requirements-bot.txt` packages: `selenium`, `undetected-chromedriver`,
+`pyautogui`, `openai`, `google-generativeai`. The DeepSeek path reuses
+the `openai` client, so there's no separate DeepSeek package.
 
 ## 2. Set environment variables
 

@@ -35,6 +35,9 @@ function Login({ onLogin }) {
   return (
     <div className="neu-root">
       <style>{`
+        /* Gradient backdrop — animated three-color sweep behind the card.
+         * The neumorphism card keeps a solid panel colour (--neu-bg) so its
+         * inset/outset shadows still read cleanly on top of the gradient. */
         .neu-root {
           --neu-bg: #e6ecf3;
           --neu-text: #2b3441;
@@ -44,14 +47,59 @@ function Login({ onLogin }) {
           --neu-shadow-dark: #b8c2cf;
           --neu-shadow-light: #ffffff;
 
-          min-height: 100vh;
+          /* Full-viewport fixed wrapper — guarantees center alignment even
+           * when the parent (body) uses flex height:100vh from index.css. */
+          position: fixed;
+          inset: 0;
+          width: 100vw;
+          height: 100vh;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: var(--neu-bg);
+          padding: 24px;
           color: var(--neu-text);
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          padding: 24px;
+          background: linear-gradient(
+            125deg,
+            #667eea 0%,
+            #764ba2 35%,
+            #f093fb 65%,
+            #4facfe 100%
+          );
+          background-size: 280% 280%;
+          animation: neuGradientShift 18s ease-in-out infinite;
+          overflow: hidden;
+        }
+        /* Subtle floating blobs — pure CSS, no extra DOM. */
+        .neu-root::before,
+        .neu-root::after {
+          content: '';
+          position: absolute;
+          width: 460px;
+          height: 460px;
+          border-radius: 50%;
+          filter: blur(80px);
+          opacity: 0.45;
+          pointer-events: none;
+        }
+        .neu-root::before {
+          background: #7c3aed;
+          top: -120px; left: -120px;
+          animation: neuFloat 14s ease-in-out infinite alternate;
+        }
+        .neu-root::after {
+          background: #06b6d4;
+          bottom: -140px; right: -120px;
+          animation: neuFloat 16s ease-in-out infinite alternate-reverse;
+        }
+        @keyframes neuGradientShift {
+          0%   { background-position:   0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position:   0% 50%; }
+        }
+        @keyframes neuFloat {
+          0%   { transform: translate(0, 0)     scale(1); }
+          100% { transform: translate(60px, 40px) scale(1.15); }
         }
         @media (prefers-color-scheme: dark) {
           .neu-root {
@@ -60,9 +108,22 @@ function Login({ onLogin }) {
             --neu-text-soft: #93a0b3;
             --neu-shadow-dark: #181c25;
             --neu-shadow-light: #2e3647;
+            background: linear-gradient(
+              125deg,
+              #0f0c29 0%,
+              #302b63 35%,
+              #24243e 65%,
+              #1a1a2e 100%
+            );
+            background-size: 280% 280%;
+            animation: neuGradientShift 18s ease-in-out infinite;
           }
+          .neu-root::before { background: #4c1d95; opacity: 0.55; }
+          .neu-root::after  { background: #0e7490; opacity: 0.55; }
         }
         .neu-card {
+          position: relative;
+          z-index: 1;
           width: 100%;
           max-width: 380px;
           padding: 36px 32px 32px;
@@ -70,7 +131,13 @@ function Login({ onLogin }) {
           background: var(--neu-bg);
           box-shadow:
             12px 12px 24px var(--neu-shadow-dark),
-           -12px -12px 24px var(--neu-shadow-light);
+           -12px -12px 24px var(--neu-shadow-light),
+            0 22px 60px rgba(0, 0, 0, 0.22);
+          animation: neuCardIn 0.5s ease-out;
+        }
+        @keyframes neuCardIn {
+          0%   { opacity: 0; transform: translateY(14px) scale(0.985); }
+          100% { opacity: 1; transform: translateY(0)    scale(1);     }
         }
         .neu-title {
           font-size: 22px;

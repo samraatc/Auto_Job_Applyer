@@ -3,4 +3,4 @@ Companies whose LinkedIn /posts pages should be scraped for hiring posts.
 Edited via the admin dashboard. Each entry is {name, linkedin_url, tags}.
 """
 
-target_companies = []
+target_companies = [{"name": "Scoutit", "linkedin_url": "https://www.linkedin.com/company/scoutit-in/", "tags": []}]

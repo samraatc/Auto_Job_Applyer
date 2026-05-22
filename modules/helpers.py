@@ -36,6 +36,24 @@ from config.settings import logs_folder_path
 if sys.platform.startswith('win'):
     import winreg
 
+# ── Console encoding fix (Windows) ────────────────────────────────────────
+# Windows cmd.exe / PowerShell default to cp1252 (charmap), which crashes
+# whenever the bot tries to print Unicode characters that show up in job
+# descriptions or AI output: → (→), arrows, smart quotes, emojis like
+# 🚀 (\U0001f680), bullets, em-dashes, etc. The crash got mis-attributed
+# to "Log.txt is open" in print_lg's except branch.
+#
+# Reconfiguring stdout/stderr with errors="replace" means we'll never raise
+# on an unencodable character — at worst, an obscure char shows up as "?".
+# That's still vastly better than the bot silently losing log lines.
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 
 
 #### Common functions ####
@@ -169,20 +187,66 @@ def get_log_path():
 __logs_file_path = get_log_path()
 
 
+def _safe_str_for_console(s: str) -> str:
+    '''
+    Belt-and-braces fallback: even after reconfigure(encoding="utf-8") at
+    module load, some environments (very old Python, redirected output to
+    a process that explicitly demanded cp1252) can still raise UnicodeError
+    on print. Round-trip the string through the active stdout encoding with
+    errors="replace" so we never crash on a stray → / smart-quote / emoji.
+    '''
+    try:
+        enc = (sys.stdout.encoding or "utf-8")
+        return s.encode(enc, errors="replace").decode(enc, errors="replace")
+    except Exception:
+        return s.encode("ascii", errors="replace").decode("ascii", errors="replace")
+
+
 def print_lg(*msgs: str | dict, end: str = "\n", pretty: bool = False, flush: bool = False, from_critical: bool = False) -> None:
     '''
     Function to log and print. **Note that, `end` and `flush` parameters are ignored if `pretty = True`**
+
+    The print to stdout and the write to log.txt are now isolated — a failure
+    in one no longer kills the other, and a UnicodeEncodeError on stdout no
+    longer gets mis-reported as "log.txt is occupied".
     '''
-    try:
-        for message in msgs:
-            pprint(message) if pretty else print(message, end=end, flush=flush)
-            with open(__logs_file_path, 'a+', encoding="utf-8") as file:
+    for message in msgs:
+        # --- Console / stdout side ------------------------------------------
+        try:
+            if pretty:
+                pprint(message)
+            else:
+                try:
+                    print(message, end=end, flush=flush)
+                except UnicodeEncodeError:
+                    # Last-resort sanitisation. The stdout reconfigure at the
+                    # top of this module should have prevented this, but if
+                    # something else has re-wrapped stdout (e.g. a launcher
+                    # piping us into a cp1252-only process) we still want
+                    # the line to land — minus the unencodable chars.
+                    print(_safe_str_for_console(str(message)), end=end, flush=flush)
+        except Exception as e_print:
+            # Never let the console path block the file path.
+            try:
+                sys.stderr.write(f"[print_lg] console write failed: {e_print!r}\n")
+            except Exception:
+                pass
+
+        # --- File / log.txt side --------------------------------------------
+        # Mode "a" is fine — "a+" was overkill and the file is opened/closed
+        # per write so other tools can read it concurrently. utf-8 means → /
+        # emojis / smart quotes write fine even though stdout couldn't.
+        try:
+            with open(__logs_file_path, 'a', encoding="utf-8", errors="replace") as file:
                 file.write(str(message) + end)
-    except Exception as e:
-        trail = f'Skipped saving this message: "{message}" to log.txt!' if from_critical else "We'll try one more time to log..."
-        alert(f"log.txt in {logs_folder_path} is open or is occupied by another program! Please close it! {trail}", "Failed Logging")
-        if not from_critical:
-            critical_error_log("Log.txt is open or is occupied by another program!", e)
+        except Exception as e_file:
+            trail = f'Skipped saving this message: "{message}" to log.txt!' if from_critical else "We'll try one more time to log..."
+            try:
+                alert(f"log.txt in {logs_folder_path} is open or is occupied by another program! Please close it! {trail}", "Failed Logging")
+            except Exception:
+                pass
+            if not from_critical:
+                critical_error_log("Log.txt is open or is occupied by another program!", e_file)
 #>
 
 

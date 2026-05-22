@@ -19,7 +19,7 @@ version:    26.01.20.5.08
 
 # These Sentences are Searched in LinkedIn
 # Enter your search terms inside '[ ]' with quotes ' "searching title" ' for each search followed by comma ', ' Eg: ["Software Engineer", "Software Developer", "Selenium Developer"]
-search_terms = ["DevOps Engineer", "Site Reliability Engineer (SRE)", "platform engineer"]
+search_terms = ["DevOps Engineer", "Site Reliability Engineer (SRE)", "platform engineer", "cloud engineer"]
 
 # Search location, this will be filled in "City, state, or zip code" search box. If left empty as "", tool will not fill it.
 search_location = "India"              # Some valid examples: "", "United States", "India", "Chicago, Illinois, United States", "90001, Los Angeles, California, United States", "Bengaluru, Karnataka, India", etc.
@@ -60,9 +60,9 @@ apply_mode = "both"
 # Optional per-search-term resume override. {search_term: relative_pdf_path}.
 # When the bot iterates search_terms, an entry here temporarily overrides
 # default_resume_path for that iteration. Edited via the admin dashboard.
-per_term_resume = {"DevOps Engineer": "all resumes/26bishnuresume_1d6235/resume.pdf", "Site Reliability Engineer (SRE)": "all resumes/26bishnuresume_1d6235/resume.pdf", "platform engineer": "all resumes/26bishnuresume_1d6235/resume.pdf"}
+per_term_resume = {"DevOps Engineer": "all resumes/26bishnuresume_1d6235/resume.pdf", "Site Reliability Engineer (SRE)": "all resumes/26bishnuresume_1d6235/resume.pdf", "platform engineer": "all resumes/26bishnuresume_1d6235/resume.pdf", "cloud engineer": "all resumes/26bishnuresume_1d6235/resume.pdf"}
 
-experience_level = ["Entry level", "Associate"]              # (multiple select) "Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive"
+experience_level = ["Entry level", "Associate", "Internship"]              # (multiple select) "Internship", "Entry level", "Associate", "Mid-Senior level", "Director", "Executive"
 job_type = ["Full-time"]                      # (multiple select) "Full-time", "Part-time", "Contract", "Temporary", "Volunteer", "Internship", "Other"
 on_site = ["Remote", "Hybrid", "On-site"]                       # (multiple select) "On-site", "Remote", "Hybrid"
 
@@ -71,7 +71,7 @@ companies = []                     # (dynamic multiple select) make sure the nam
 location = []                      # (dynamic multiple select)
 industry = []                      # (dynamic multiple select)
 job_function = []                  # (dynamic multiple select)
-job_titles = ["Associate Product Manager", "Product Manager", "Product Owner", "Product Analyst", "Product Associate"]                    # (dynamic multiple select)
+job_titles = []                    # (dynamic multiple select) — managed by Search Rules tab; left empty by default
 benefits = []                      # (dynamic multiple select)
 commitments = []                   # (dynamic multiple select)
 

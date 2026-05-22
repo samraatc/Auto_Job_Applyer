@@ -79,10 +79,21 @@ def get_status():
     return _status("bot")
 
 
-def start_feed_scan(dry_run: bool = False):
+def start_feed_scan(dry_run: bool = False, keywords: list[str] | None = None):
+    """
+    Start the feed scraper subprocess.
+    - keywords=None  → original behaviour (scan configured companies)
+    - keywords=[...] → keyword-based LinkedIn content search (e.g. ["hiring"])
+    Both share the "feed" slot so only one scan can run at a time.
+    """
     argv = ['python', '-u', '-m', 'modules.feed_scraper']
     if dry_run:
         argv.append('--dry-run')
+    if keywords:
+        argv.append('--keywords')
+        # Argparse with nargs="*" accepts each keyword as a separate argv entry,
+        # so multi-word phrases stay intact ("we are hiring devops" → one arg).
+        argv.extend(keywords)
     return _spawn("feed", argv)
 
 

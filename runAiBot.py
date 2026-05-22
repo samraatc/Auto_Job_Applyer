@@ -116,6 +116,54 @@ def is_logged_in_LN() -> bool:
     return True
 
 
+def _dump_login_diagnostics(stage: str) -> None:
+    '''
+    Helper: dump current URL / title and save a screenshot when login
+    misbehaves. Without this you're flying blind — the bot just says
+    "Couldn't find username field" and you have no idea whether LinkedIn
+    served a captcha, a security checkpoint, or you were already in.
+    '''
+    try:
+        cur_url = driver.current_url
+        cur_title = driver.title
+        print_lg(f"[login diag] stage={stage} url={cur_url!r} title={cur_title!r}")
+    except Exception:
+        pass
+    try:
+        os.makedirs("logs", exist_ok=True)
+        shot = os.path.join("logs", f"login_fail_{stage}_{int(time.time())}.png")
+        driver.save_screenshot(shot)
+        print_lg(f"[login diag] screenshot saved → {shot}")
+    except Exception as e:
+        print_lg(f"[login diag] couldn't save screenshot: {e}")
+
+
+def _fill_login_field(field_ids: list[str], value: str, label: str) -> bool:
+    '''
+    Try a list of possible field IDs/names — LinkedIn occasionally serves
+    a variant page where the input is `session_key`/`session_password`
+    instead of `username`/`password`. First match wins.
+    '''
+    for fid in field_ids:
+        # Try by ID first
+        try:
+            text_input_by_ID(driver, fid, value, 5)
+            return True
+        except Exception:
+            pass
+        # Then by name attribute
+        try:
+            el = WebDriverWait(driver, 2).until(
+                EC.presence_of_element_located((By.NAME, fid))
+            )
+            el.send_keys(value)
+            return True
+        except Exception:
+            pass
+    print_lg(f"Couldn't find {label} field (tried IDs/names: {field_ids}).")
+    return False
+
+
 def login_LN() -> None:
     '''
     Function to login for LinkedIn
@@ -123,6 +171,15 @@ def login_LN() -> None:
     * If failed, tries to login using saved LinkedIn profile button if available
     * If both failed, asks user to login manually
     '''
+    # Fast-path: if Chrome restored a session, we're already on /feed/
+    # and don't need to type anything. Skip the form entirely.
+    try:
+        if is_logged_in_LN():
+            print_lg("Already signed in — skipping login form.")
+            return
+    except Exception:
+        pass
+
     # Find the username and password fields and fill them with user credentials
     driver.get("https://www.linkedin.com/login")
     if username == "username@example.com" and password == "example_password":
@@ -131,34 +188,58 @@ def login_LN() -> None:
         manual_login_retry(is_logged_in_LN, 2)
         return
     try:
-        wait.until(EC.presence_of_element_located((By.LINK_TEXT, "Forgot password?")))
+        # Wait for the login form to be ready. LinkedIn sometimes hides
+        # "Forgot password?" behind a click — fall back to waiting on the
+        # username field itself, which is the thing we actually need.
         try:
-            text_input_by_ID(driver, "username", username, 1)
-        except Exception as e:
-            print_lg("Couldn't find username field.")
-            # print_lg(e)
-        try:
-            text_input_by_ID(driver, "password", password, 1)
-        except Exception as e:
-            print_lg("Couldn't find password field.")
-            # print_lg(e)
-        # Find the login submit button and click it
-        driver.find_element(By.XPATH, '//button[@type="submit" and contains(text(), "Sign in")]').click()
+            wait.until(EC.presence_of_element_located((By.LINK_TEXT, "Forgot password?")))
+        except Exception:
+            try:
+                WebDriverWait(driver, 8).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "input#username, input[name='session_key']"))
+                )
+            except Exception:
+                # Page never showed a recognizable login form. Capture state.
+                _dump_login_diagnostics("no-form")
+
+        got_user = _fill_login_field(["username", "session_key"], username, "username")
+        got_pass = _fill_login_field(["password", "session_password"], password, "password")
+
+        if not (got_user and got_pass):
+            _dump_login_diagnostics("missing-fields")
+
+        # Find the login submit button and click it. Try a few selectors,
+        # since LinkedIn has shipped variants with different button text.
+        submit_clicked = False
+        for xp in (
+            '//button[@type="submit" and contains(text(), "Sign in")]',
+            '//button[@type="submit" and contains(., "Sign in")]',
+            '//button[@aria-label="Sign in"]',
+            '//button[@data-litms-control-urn="login-submit"]',
+        ):
+            try:
+                driver.find_element(By.XPATH, xp).click()
+                submit_clicked = True
+                break
+            except Exception:
+                continue
+        if not submit_clicked:
+            raise RuntimeError("Sign in submit button not found")
     except Exception as e1:
         try:
             profile_button = find_by_class(driver, "profile__details")
             profile_button.click()
         except Exception as e2:
-            # print_lg(e1, e2)
             print_lg("Couldn't Login!")
+            _dump_login_diagnostics("submit-failed")
 
     try:
         # Wait until successful redirect, indicating successful login
         wait.until(EC.url_to_be("https://www.linkedin.com/feed/")) # wait.until(EC.presence_of_element_located((By.XPATH, '//button[normalize-space(.)="Start a post"]')))
         return print_lg("Login successful!")
     except Exception as e:
-        print_lg("Seems like login attempt failed! Possibly due to wrong credentials or already logged in! Try logging in manually!")
-        # print_lg(e)
+        print_lg("Seems like login attempt failed! Possibly due to wrong credentials, a security checkpoint, or already logged in! Try logging in manually!")
+        _dump_login_diagnostics("post-submit")
         manual_login_retry(is_logged_in_LN, 2)
 #>
 
@@ -1033,6 +1114,12 @@ def apply_to_jobs(search_terms: list[str]) -> None:
                         print_lg(f"apply_mode=easy: skipping non-Easy-Apply job '{title}'")
                         skip_count += 1
                         continue
+                    # Loud marker — makes it trivial to read the live log and
+                    # tell which path a job took. Without this, the Apply Log
+                    # tab's "Failed" filter is the only place to see Easy Apply
+                    # outcomes, which is confusing when the user expects them
+                    # inline with the bot output.
+                    print_lg(f"[APPLY PATH] {'EASY APPLY' if _has_easy else 'EXTERNAL'} → \"{title}\" (job_id={job_id})")
                     # Case 1: Easy Apply Button
                     if _has_easy:
                         try: 
@@ -1093,8 +1180,13 @@ def apply_to_jobs(search_terms: list[str]) -> None:
 
 
                         except Exception as e:
-                            print_lg("Failed to Easy apply!")
-                            # print_lg(e)
+                            # Loud, unmistakable failure marker. The CSV +
+                            # Mongo write below means the row WILL appear in
+                            # the Apply Log tab with a red FAILED pill —
+                            # users sometimes miss it because the in-stream
+                            # log is quiet. This line + the screenshot make
+                            # it impossible to miss.
+                            print_lg(f"[EASY APPLY FAILED] \"{title}\" (job_id={job_id}) — recorded as FAILED. Reason: {e}")
                             critical_error_log("Somewhere in Easy Apply process",e)
                             failed_job(job_id, job_link, resume, date_listed, "Problem in Easy Applying", e, application_link, screenshot_name)
                             failed_count += 1
